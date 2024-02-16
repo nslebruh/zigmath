@@ -58,6 +58,12 @@ fn Vector(comptime T: type, len: usize) type {
             return @reduce(.Add, lhs.i * rhs.i);
         }
 
+        pub fn normalise(self: *Self) void {
+            if (self.mag() == 0) {
+                self.* = self.divS(self.mag());
+            }
+        }
+
         fn magFloat(inner: @Vector(len, T)) T {
             return @sqrt(@reduce(.Add, inner * inner));
         }
@@ -99,10 +105,41 @@ test Vector {
     try std.testing.expectEqual(6, @round(z.mag()));
 }
 
-pub fn VectorAngle2(comptime T: type, vec: Vector(T, 2)) f32 {
-    const ret: f64 = std.math.atan2(@as(f64, @intCast(vec.i[1])), @as(f64, @intCast(vec.i[0])));
+pub const Angle2D = struct {
+    num: f64,
+
+    pub fn degrees(self: @This()) f64 {
+        return self.num;
+    }
+
+    pub fn radians(self: @This()) void {
+        std.math.degreesToRadians(f64, self.num);
+    }
+};
+
+pub fn VectorAngle2(comptime T: type, vec: Vector(T, 2)) Angle2D {
+    var ret: f64 = std.math.atan2(@as(f64, @intCast(vec.i[1])), @as(f64, @intCast(vec.i[0])));
+    switch (.{vec.i[0] < 0, vec.i[1] < 0}) {
+        .{false, false} => ret,
+        .{true, false} => ret += 180,
+        .{true, true} => ret += 180,
+        .{false, true} => ret += 360
+    }
+    return Angle2D{.num = ret};
 }
 
-//pub fn VectorAngle3(comptime T: type, vec: Vector(T, 3)) .{f32, f32} {
-//
-//}
+test VectorAngle2 {
+
+}
+
+pub const Angle3D = struct {
+    pitch: f64,
+    yaw: f64,
+    roll: f64 = 0,
+};
+
+pub fn VectorAngle3(comptime T: type, vec: Vector(T, 3)) Angle3D {
+    var temp_vec = vec;
+    &temp_vec.normalise();
+    return Angle3D{.pitch = @sqrt()};
+}
