@@ -1,46 +1,170 @@
 const std = @import("std");
-const vec = @import("./vec.zig");
-const vec2 = vec.Vector2;
-const vec3 = vec.Vector3;
-const vec4 = vec.Vector4;
 
-pub fn Matrix2x2(comptime T: type) type {
-    return packed struct {
-        inner: [2]vec2(T)
+fn UnsizedMatrix(comptime T: type) type {
+    return struct {
+        data: []T,
+        width: usize,
+        height: usize,
+
+        pub fn new(data: [*]const T, height: usize, width: usize) MatrixSlice(T) {
+            return MatrixSlice(T){.data = data, .height = height, .width = width};
+        }
+
+        pub fn as(self: @This(), comptime ty: type) @TypeOf(T) {
+            switch (@typeInfo(ty)) {
+                .Struct => {
+                    if (@hasField(ty, "data") and @hasDecl(ty, "row") and @hasDecl(ty, "column")) {
+                        if (self.width == ty.column and self.height == ty.row) {
+                            return @TypeOf(T){.data = self.data.*};
+                        } else @compileError("rows and columns of type must match the internal rows and columns");
+                    } else @compileError("struct must have contain the fields data, row and column");
+                },
+                else => @compileError("must be a struct"),
+            }
+        }
     };
 }
 
-pub fn Matrix2x3(comptime T: type) @TypeOf(packed struct { x: vec3(T), y: vec3(T) }) {
-    return packed struct {
-        x: vec3(T),
-        y: vec3(T),
+fn MatrixSlice(comptime T: type) type {
+    return struct {
+        data: [*]const T,
+        width: usize,
+        height: usize,
+
+        pub fn get(self: @This(), row: usize, col: usize) T {
+            return self.data[self.idx(row, col)];
+        }
+
+        pub fn idx(self: @This(), row: usize, col: usize) usize {
+            std.debug.assert(row < self.height);
+            std.debug.assert(col < self.width);
+            return col + row * self.width;
+        }
+    };
+}
+
+test MatrixSlice {
+    std.debug.print("\n", .{});
+    //const x = Matrix(f32, 2, 2).new(.{1, 2, 3, 4});
+}
+
+pub fn Matrix(comptime T: type, height: usize, width: usize) type {
+    return extern struct {
+        data: [height * width]T,
 
         const Self = @This();
+
+        pub fn new(data: [height * width]T) Self {
+            return Self{.data = data};
+        }
+
+        pub fn asSlice(self: Self) MatrixSlice(T) {
+            std.debug.assert(width < 4);
+            return MatrixSlice(T){.data = &self.data, .height = height, .width = width};
+        }
+
+        pub fn get(self: Self, r: usize, col: usize) T {
+            return self.data[Self.idx(r, col)];
+        }
+
+        pub fn idx(y: usize, x: usize) usize {
+            std.debug.assert(y < height);
+            std.debug.assert(x < width);
+            return x + y * width;
+        }
+
+        pub fn column(self: Self, c: usize) []const T {
+            std.debug.assert(c < height);
+            var ret: [height]T = undefined;
+            for (0..height) |i| {
+                ret[i] = self.get(i, c);
+            }
+            return &ret;
+        }
+        test "Matrix.column" {
+            std.debug.print("\n", .{});
+            const x = Matrix(f32, 2, 2).new(.{1, 2, 3, 4});
+            std.debug.print("{any}\n", .{x.column(0)});
+        }
+
+        pub fn row(self: Self, r: usize) []const T {
+            std.debug.assert(r < width);
+            return self.data[width * r..width * r + width];
+        }
+
+        pub fn identity() Self {
+            comptime if (height != width) @compileError("not a square matrix");
+            var ret: Self = undefined;
+            for (0..height) |i| {
+                for (0..width) |j| {
+                    ret.data[i * height + j] = if (i == j) 1 else 0;
+                }
+            }
+            return ret;
+        }
 
         pub fn add(lhs: Self, rhs: Self) Self {
-            return Self{.x = lhs.x.add(rhs.x), .y = lhs.y.add(rhs.y)};
+            var ret: Self = undefined;
+            for (0..lhs.data.len) |i| {
+                ret.data[i] = lhs.data[i] + rhs.data[i];
+            }
+            return ret;
+        }
+        pub fn addS(lhs: Self, rhs: T) Self {
+            var ret: Self = undefined;
+            for (0..lhs.data.len) |i| {
+                ret.data[i] = lhs.data[i] + rhs;
+            }
+            return ret;
+        }
+        pub fn sub(lhs: Self, rhs: Self) Self {
+            var ret: Self = undefined;
+            for (0..lhs.data.len) |i| {
+                ret.data[i] = lhs.data[i] - rhs.data[i];
+            }
+            return ret;
+        }
+        pub fn subS(lhs: Self, rhs: T) Self {
+            var ret: Self = undefined;
+            for (0..lhs.data.len) |i| {
+                ret.data[i] = lhs.data[i] - rhs;
+            }
+            return ret;
+        }
+        pub fn mulS(lhs: Self, rhs: T) Self {
+            var ret: Self = undefined;
+            for (0..lhs.data.len) |i| {
+                ret.data[i] = lhs.data[i] * rhs;
+            }
+            return ret;
+        }
+        pub fn divS(lhs: Self, rhs: T) Self {
+            var ret: Self = undefined;
+            for (0..lhs.data.len) |i| {
+                ret.data[i] = lhs.data[i] / rhs;
+            }
+            return ret;
         }
 
-        //pub fn mul3x2(lhs: Self, rhs: Matrix3x2(T)) Matrix2x2(T) {
-//
-        //}
+        fn dot(lhs: []const T, rhs: []const T) T {
+            var ret: T = 0;
+            for (lhs, rhs) |i, j| {
+                ret += (i * j);
+            }
+            return ret;
+        }
     };
 }
 
-test Matrix2x3 {
-    _ = Matrix2x3(f32){.x = vec3(f32).new(.{1, 2, 3}), .y = vec3(f32).new(.{1, 2, 3})};
-}
+test Matrix {
+    std.debug.print("\n", .{});
+    const M1 = Matrix(f32, 2, 2);
+    //const M2 = Matrix(f32, 2, 3);
 
-pub fn Matrix3x2(comptime T: type) type {
-    return packed struct {
-        x: vec2(T),
-        y: vec2(T),
-        z: vec2(T),
+    const x = M1.new(.{1, 2, 3, 4});
+    const y = M1.new(.{1, 2, 3, 4});
 
-        const Self = @This();
+    try std.testing.expectEqual(M1.new(.{2, 4, 6, 8}), x.add(y));
+    try std.testing.expectEqual(M1.new(.{0, 0, 0, 0}), x.sub(y));
 
-        pub fn getColumn(self: Self, i: usize) vec3(T) {
-            return vec3(T){.inner = .{self.x.i(i), self.y.i(i), self.z.i(i)}};
-        }
-    };
 }
